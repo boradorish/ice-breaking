@@ -1,6 +1,9 @@
 import { GameState } from "./types";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
 
 const GAME_KEY = "icebreak:game";
+const DEV_STATE_FILE = join(process.cwd(), ".ice-break-dev-state.json");
 
 function createInitialState(): GameState {
   return {
@@ -12,13 +15,27 @@ function createInitialState(): GameState {
   };
 }
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __gameStore: GameState | undefined;
-}
-
 function useKV(): boolean {
   return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+}
+
+function readFromFile(): GameState | null {
+  try {
+    if (existsSync(DEV_STATE_FILE)) {
+      return JSON.parse(readFileSync(DEV_STATE_FILE, "utf-8"));
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return null;
+}
+
+function writeToFile(state: GameState): void {
+  try {
+    writeFileSync(DEV_STATE_FILE, JSON.stringify(state));
+  } catch {
+    // ignore write errors
+  }
 }
 
 export async function getGameState(): Promise<GameState> {
@@ -27,10 +44,7 @@ export async function getGameState(): Promise<GameState> {
     const state = await kv.get<GameState>(GAME_KEY);
     return state ?? createInitialState();
   }
-  if (!global.__gameStore) {
-    global.__gameStore = createInitialState();
-  }
-  return JSON.parse(JSON.stringify(global.__gameStore));
+  return readFromFile() ?? createInitialState();
 }
 
 export async function setGameState(state: GameState): Promise<void> {
@@ -39,7 +53,7 @@ export async function setGameState(state: GameState): Promise<void> {
     await kv.set(GAME_KEY, state);
     return;
   }
-  global.__gameStore = JSON.parse(JSON.stringify(state));
+  writeToFile(state);
 }
 
 export async function updateGameState(
