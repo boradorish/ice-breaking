@@ -71,13 +71,17 @@ function GameBoard() {
 
   const fetchState = useCallback(async () => {
     if (!participantId) return;
-    const res = await fetch(`/api/state?participantId=${participantId}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    setStateData(data);
+    try {
+      const res = await fetch(`/api/state?participantId=${participantId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setStateData(data);
 
-    if (data.status === "keyword_entry") {
-      router.push("/");
+      if (data.status === "keyword_entry") {
+        router.push("/");
+      }
+    } catch {
+      // Network error — will retry on next poll
     }
   }, [participantId, router]);
 
@@ -162,32 +166,6 @@ function GameBoard() {
           <p className="text-slate-400 text-sm">
             Round {currentRound} / {totalRounds} &nbsp;|&nbsp; 조 {group.id}
           </p>
-        </div>
-        <div className="text-right">
-          <p className="text-sm text-slate-400">내 점수</p>
-          <p className="text-2xl font-bold text-yellow-400">{participant.score}점</p>
-        </div>
-      </div>
-
-      {/* Score board */}
-      <div className="bg-slate-800 rounded-xl p-4 mb-4">
-        <h2 className="text-xs text-slate-400 mb-2 font-semibold uppercase tracking-wide">점수판</h2>
-        <div className="flex flex-wrap gap-3">
-          {[...group.participants]
-            .sort((a, b) => b.score - a.score)
-            .map((p) => (
-              <div
-                key={p.id}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
-                  p.id === participantId
-                    ? "bg-indigo-800 text-indigo-200"
-                    : "bg-slate-700 text-slate-300"
-                }`}
-              >
-                <span>{p.name}</span>
-                <span className="font-bold text-yellow-400">{p.score}pt</span>
-              </div>
-            ))}
         </div>
       </div>
 

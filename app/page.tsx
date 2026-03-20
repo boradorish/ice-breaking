@@ -36,15 +36,18 @@ export default function Home() {
   const [error, setError] = useState("");
 
   const fetchState = useCallback(async (pid: string | null) => {
-    const url = pid ? `/api/state?participantId=${pid}` : "/api/state";
-    const res = await fetch(url);
-    if (!res.ok) return;
-    const data = await res.json();
-    setStateData(data);
+    try {
+      const url = pid ? `/api/state?participantId=${pid}` : "/api/state";
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      setStateData(data);
 
-    // Auto-redirect when game starts
-    if (data.status === "playing" && pid) {
-      router.push(`/game?participantId=${pid}`);
+      if (data.status === "playing" && pid) {
+        router.push(`/game?participantId=${pid}`);
+      }
+    } catch {
+      // Network error — will retry on next poll
     }
   }, [router]);
 
@@ -134,19 +137,7 @@ export default function Home() {
       <div className="flex flex-col items-center justify-center min-h-screen gap-6">
         <h1 className="text-4xl font-bold text-indigo-400">🧊 Ice Break</h1>
         <p className="text-2xl text-yellow-400 font-bold">게임 종료!</p>
-        <div className="bg-slate-800 rounded-xl p-6 w-full max-w-sm">
-          <h2 className="text-lg font-semibold mb-3 text-center">최종 순위</h2>
-          {[...participants]
-            .sort((a, b) => b.score - a.score)
-            .map((p, i) => (
-              <div key={p.id} className="flex justify-between py-1">
-                <span>
-                  {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}{" "}
-                  {p.name}
-                </span>
-              </div>
-            ))}
-        </div>
+        <p className="text-slate-400">수고하셨습니다 🎉</p>
       </div>
     );
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface Participant {
   id: string;
@@ -51,6 +51,7 @@ interface AdminData {
   stats: {
     participants: { id: string; name: string; score: number }[];
     keywords: KeywordStat[];
+    mostGuessed: { id: string; name: string; totalCorrect: number }[];
   };
 }
 
@@ -70,20 +71,27 @@ export default function AdminPage() {
   const [roundConfigs, setRoundConfigs] = useState<RoundConfig[]>([
     { round: 1, groups: [] },
   ]);
+  // Track whether we've done the initial sync from server to avoid overwriting user edits
+  const initializedRef = useRef(false);
 
   const fetchAdmin = useCallback(async (pw: string) => {
-    const res = await fetch(`/api/admin/state?password=${encodeURIComponent(pw)}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    setAdminData(data);
-    // Sync roundConfigs from server
-    if (data.state.roundConfigs.length > 0) {
-      setRoundConfigs(data.state.roundConfigs);
+    try {
+      const res = await fetch(`/api/admin/state?password=${encodeURIComponent(pw)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setAdminData(data);
+      if (data.state.roundConfigs.length > 0) {
+        setRoundConfigs(data.state.roundConfigs);
+      }
+      // Only sync participant names on first load, not on every poll
+      if (data.state.participants.length > 0 && !initializedRef.current) {
+        initializedRef.current = true;
+        setParticipantNames(data.state.participants.map((p: Participant) => p.name).join("\n"));
+      }
+    } catch {
+      // Network error — will retry on next poll
     }
-    if (data.state.participants.length > 0 && !participantNames) {
-      setParticipantNames(data.state.participants.map((p: Participant) => p.name).join("\n"));
-    }
-  }, [participantNames]);
+  }, []); // No dependency on participantNames — uses ref instead
 
   useEffect(() => {
     if (!authed) return;
@@ -241,6 +249,8 @@ export default function AdminPage() {
   const state = adminData?.state;
   const stats = adminData?.stats;
   const participants = state?.participants ?? [];
+  // Settings are locked once the game moves past setup
+  const settingsLocked = state?.status !== "setup";
 
   return (
     <div className="min-h-screen p-4 max-w-5xl mx-auto">
@@ -294,8 +304,14 @@ export default function AdminPage() {
       {/* Setup Tab */}
       {tab === "설정" && (
         <div className="space-y-6">
+          {settingsLocked && (
+            <div className="bg-yellow-900/40 border border-yellow-700 rounded-xl px-4 py-3 text-sm text-yellow-300">
+              🔒 게임이 시작되어 설정을 변경할 수 없습니다. 변경이 필요하면 초기화 후 다시 설정하세요.
+            </div>
+          )}
+
           {/* Participants */}
-          <div className="bg-slate-800 rounded-xl p-5">
+          <div className={`bg-slate-800 rounded-xl p-5 ${settingsLocked ? "opacity-50 pointer-events-none" : ""}`}>
             <h2 className="text-lg font-semibold mb-3">참여자 목록</h2>
             <p className="text-slate-400 text-sm mb-3">
               참여자 이름을 한 줄에 하나씩 입력하세요.
@@ -321,7 +337,7 @@ export default function AdminPage() {
           </div>
 
           {/* Round Configurations */}
-          <div className="bg-slate-800 rounded-xl p-5">
+          <div className={`bg-slate-800 rounded-xl p-5 ${settingsLocked ? "opacity-50 pointer-events-none" : ""}`}>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold">조 편성</h2>
               <button
@@ -566,9 +582,35 @@ export default function AdminPage() {
             )}
           </div>
 
+          {/* Most guessed person */}
+          <div className="bg-slate-800 rounded-xl p-5">
+            <h2 className="text-lg font-semibold mb-1">키워드가 가장 많이 맞춰진 사람</h2>
+            <p className="text-slate-400 text-sm mb-3">본인의 키워드를 다른 사람들이 많이 맞춘 순</p>
+            {!stats || stats.mostGuessed.length === 0 ? (
+              <p className="text-slate-400 text-sm">아직 데이터가 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                {stats.mostGuessed.map((p, i) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between bg-slate-900 px-4 py-3 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">
+                        {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
+                      </span>
+                      <span className="font-medium">{p.name}</span>
+                    </div>
+                    <span className="text-emerald-400 font-bold text-lg">{p.totalCorrect}회 맞춤</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Keyword stats */}
           <div className="bg-slate-800 rounded-xl p-5">
-            <h2 className="text-lg font-semibold mb-3">키워드 통계</h2>
+            <h2 className="text-lg font-semibold mb-3">키워드별 통계</h2>
             <p className="text-slate-400 text-sm mb-3">많이 맞춰진 키워드 순</p>
             {!stats || stats.keywords.length === 0 ? (
               <p className="text-slate-400 text-sm">아직 데이터가 없습니다.</p>

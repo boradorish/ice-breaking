@@ -11,10 +11,10 @@ export async function GET(req: NextRequest) {
 
   const state = await getGameState();
 
-  // Compute statistics
+  // Compute per-keyword statistics
   const keywordStats: Record<
     string,
-    { word: string; ownerName: string; timesGuessed: number; timesCorrect: number }
+    { word: string; ownerName: string; ownerId: string; timesGuessed: number; timesCorrect: number }
   > = {};
 
   for (const round of state.rounds) {
@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
           keywordStats[key] = {
             word: kw.word,
             ownerName: owner?.name ?? "",
+            ownerId: kw.ownerId,
             timesGuessed: 0,
             timesCorrect: 0,
           };
@@ -34,6 +35,15 @@ export async function GET(req: NextRequest) {
         if (kw.correctlyGuessed) keywordStats[key].timesCorrect += 1;
       }
     }
+  }
+
+  // Aggregate correct guesses per person (whose keywords were guessed)
+  const guessedByPerson: Record<string, { name: string; totalCorrect: number }> = {};
+  for (const stat of Object.values(keywordStats)) {
+    if (!guessedByPerson[stat.ownerId]) {
+      guessedByPerson[stat.ownerId] = { name: stat.ownerName, totalCorrect: 0 };
+    }
+    guessedByPerson[stat.ownerId].totalCorrect += stat.timesCorrect;
   }
 
   return NextResponse.json({
@@ -46,6 +56,9 @@ export async function GET(req: NextRequest) {
       keywords: Object.values(keywordStats).sort(
         (a, b) => b.timesCorrect - a.timesCorrect
       ),
+      mostGuessed: Object.entries(guessedByPerson)
+        .map(([id, v]) => ({ id, name: v.name, totalCorrect: v.totalCorrect }))
+        .sort((a, b) => b.totalCorrect - a.totalCorrect),
     },
   });
 }

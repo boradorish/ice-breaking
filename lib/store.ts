@@ -17,13 +17,14 @@ function createInitialState(): GameState {
 declare global {
   // eslint-disable-next-line no-var
   var __gameStore: GameState | undefined;
+  // eslint-disable-next-line no-var
+  var __gameMutex: Promise<void>;
 }
 
 function useKV(): boolean {
   return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
 
-// Use require() to avoid Next.js static bundling issues with fs
 function readFromFile(): GameState | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -47,6 +48,18 @@ function writeToFile(state: GameState): void {
   }
 }
 
+// Simple mutex to prevent concurrent updateGameState race conditions
+async function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  await (global.__gameMutex ?? Promise.resolve());
+  let release!: () => void;
+  global.__gameMutex = new Promise((r) => { release = r; });
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 export async function getGameState(): Promise<GameState> {
   if (useKV()) {
     const { kv } = await import("@vercel/kv");
@@ -54,12 +67,10 @@ export async function getGameState(): Promise<GameState> {
     return state ?? createInitialState();
   }
 
-  // Memory cache — fast, but lost on hot reload
   if (global.__gameStore) {
     return JSON.parse(JSON.stringify(global.__gameStore));
   }
 
-  // File fallback — persists across hot reloads
   const fromFile = readFromFile();
   if (fromFile) {
     global.__gameStore = fromFile;
@@ -77,8 +88,6 @@ export async function setGameState(state: GameState): Promise<void> {
     await kv.set(GAME_KEY, state);
     return;
   }
-
-  // Write to both memory and file
   global.__gameStore = JSON.parse(JSON.stringify(state));
   writeToFile(state);
 }
@@ -86,8 +95,10 @@ export async function setGameState(state: GameState): Promise<void> {
 export async function updateGameState(
   updater: (state: GameState) => GameState
 ): Promise<GameState> {
-  const state = await getGameState();
-  const newState = updater(state);
-  await setGameState(newState);
-  return newState;
+  return withLock(async () => {
+    const state = await getGameState();
+    const newState = updater(state);
+    await setGameState(newState);
+    return newState;
+  });
 }

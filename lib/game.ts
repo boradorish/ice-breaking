@@ -21,6 +21,21 @@ export function initializeRound(
       .map((id) => state.participants.find((p) => p.id === id))
       .filter(Boolean) as NonNullable<(typeof state.participants)[number]>[];
 
+    // Validate all assigned participants exist and have submitted keywords
+    const missing = groupConfig.participantIds.filter(
+      (id) => !state.participants.find((p) => p.id === id)
+    );
+    if (missing.length > 0) {
+      throw new Error(`참여자를 찾을 수 없습니다: ${missing.join(", ")}`);
+    }
+
+    const noKeywords = participants.filter((p) => p.keywords.length !== 3);
+    if (noKeywords.length > 0) {
+      throw new Error(
+        `키워드를 입력하지 않은 참여자가 있습니다: ${noKeywords.map((p) => p.name).join(", ")}`
+      );
+    }
+
     const keywords: KeywordState[] = shuffle(
       participants.flatMap((p) =>
         p.keywords.map((word) => ({
@@ -63,26 +78,44 @@ export function processGuess(
   guessedParticipantId: string
 ): { newState: GameState; correct: boolean } {
   const currentRound = state.rounds.find((r) => r.round === state.currentRound);
-  if (!currentRound) throw new Error("No current round");
+  if (!currentRound) throw new Error("진행 중인 라운드가 없습니다");
 
   const groupIndex = currentRound.groups.findIndex((g) =>
     g.participantIds.includes(guesserParticipantId)
   );
-  if (groupIndex === -1) throw new Error("Guesser not in any group");
+  if (groupIndex === -1) throw new Error("해당 참여자가 조에 배정되지 않았습니다");
 
   const group = currentRound.groups[groupIndex];
 
+  if (group.finished) throw new Error("이미 완료된 조입니다");
+
+  // Bounds check for turnOrder
+  if (group.currentTurnIndex >= group.turnOrder.length) {
+    throw new Error("턴 순서 오류");
+  }
+
   const currentTurnId = group.turnOrder[group.currentTurnIndex];
-  if (currentTurnId !== guesserParticipantId) throw new Error("Not your turn");
+  if (currentTurnId !== guesserParticipantId) throw new Error("지금은 내 차례가 아닙니다");
+
+  // Validate guessedParticipant is in this group (not an outsider)
+  if (!group.participantIds.includes(guessedParticipantId)) {
+    throw new Error("같은 조의 참여자만 선택할 수 있습니다");
+  }
 
   const keywordIndex = group.keywords.findIndex(
     (k) => k.word === keyword && !k.deactivated
   );
-  if (keywordIndex === -1) throw new Error("Keyword not found or deactivated");
+  if (keywordIndex === -1) throw new Error("유효하지 않거나 이미 비활성화된 키워드입니다");
 
   const keywordState = group.keywords[keywordIndex];
-  if (keywordState.ownerId === guesserParticipantId)
-    throw new Error("Cannot guess your own keyword");
+  if (keywordState.ownerId === guesserParticipantId) {
+    throw new Error("자신의 키워드는 추리할 수 없습니다");
+  }
+
+  // Cannot guess yourself as the owner
+  if (guessedParticipantId === guesserParticipantId) {
+    throw new Error("자기 자신을 선택할 수 없습니다");
+  }
 
   const correct = keywordState.ownerId === guessedParticipantId;
   const newGuessCount = keywordState.guessCount + 1;
