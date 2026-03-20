@@ -71,6 +71,7 @@ export default function AdminPage() {
   const [roundConfigs, setRoundConfigs] = useState<RoundConfig[]>([
     { round: 1, groups: [] },
   ]);
+  const [initialScores, setInitialScores] = useState<Record<string, number>>({});
   // Track whether we've done the initial sync from server to avoid overwriting user edits
   const initializedRef = useRef(false);
 
@@ -147,6 +148,10 @@ export default function AdminPage() {
 
   async function saveGroups() {
     await apiPost("/api/admin/groups", { roundConfigs });
+  }
+
+  async function saveInitialScores() {
+    await apiPost("/api/admin/scores", { scores: initialScores });
   }
 
   async function control(action: string) {
@@ -485,6 +490,39 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Initial score assignment */}
+          {participants.length > 0 && (state?.status === "setup" || state?.status === "keyword_entry") && (
+            <div className="bg-slate-800 rounded-xl p-5">
+              <h2 className="text-lg font-semibold mb-1">초기 점수 배정</h2>
+              <p className="text-slate-400 text-sm mb-4">게임 시작 전 특정 참여자에게 핸디캡 점수를 부여합니다.</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {participants.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-lg">
+                    <span className="text-sm">{p.name}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={initialScores[p.id] ?? p.score}
+                      onChange={(e) =>
+                        setInitialScores((prev) => ({
+                          ...prev,
+                          [p.id]: Math.max(0, parseInt(e.target.value) || 0),
+                        }))
+                      }
+                      className="w-16 bg-slate-700 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={saveInitialScores}
+                className="mt-4 bg-indigo-600 hover:bg-indigo-500 px-5 py-2 rounded-lg text-sm font-semibold transition-colors"
+              >
+                점수 저장
+              </button>
             </div>
           )}
 
