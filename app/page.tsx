@@ -59,6 +59,14 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [participantId, fetchState]);
 
+  function clearSession() {
+    localStorage.removeItem("participantId");
+    setParticipantId(null);
+    setKeywords(["", "", ""]);
+    setError("");
+    fetchState(null);
+  }
+
   async function handleJoin(id: string) {
     setError("");
     const res = await fetch("/api/join", {
@@ -178,6 +186,9 @@ export default function Home() {
           </div>
         </div>
         <p className="text-xs text-slate-600">내 키워드: {participant.keywords.join(", ")}</p>
+        <button onClick={clearSession} className="text-xs text-slate-500 hover:text-slate-300 underline">
+          다시 선택
+        </button>
       </div>
     );
   }
@@ -210,6 +221,12 @@ export default function Home() {
             ))}
           </div>
           {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
+          <button
+            onClick={clearSession}
+            className="mt-3 w-full text-slate-500 hover:text-slate-300 text-xs underline"
+          >
+            다시 선택
+          </button>
           <button
             onClick={handleKeywordsSubmit}
             disabled={submitting}
